@@ -1,7 +1,7 @@
 name: category_picker
-description: A high-performance hierarchical category picker for Flutter with two-level categories, custom icons and colors.
+description: A category picker for Flutter with two-level categories, custom icons and colors.
 version: 1.0.0
-homepage: https://github.com/yourusername/category_picker
+homepage: https://github.com/hujingxuan0604/category_picker.git
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
