@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:category_picker/src/controllers/picker_controller.dart';
-import 'package:category_picker/src/models/picker_config.dart';
-import 'package:category_picker/src/models/category.dart';
+import '../controllers/picker_controller.dart';
+import '../models/picker_config.dart';
+import '../models/category.dart';
+import '../utils/responsive_helper.dart';
+import 'category_item.dart';
 
 class PrimaryCategoryPanel extends StatelessWidget {
   final CategoryPickerController controller;
@@ -10,230 +12,114 @@ class PrimaryCategoryPanel extends StatelessWidget {
   /// 长按主类别的回调函数
   final Function(Category category)? onLongPressPrimary;
 
+  /// 点击类别的回调函数
+  final Function(Category category)? onCategoryTap;
+
   const PrimaryCategoryPanel({
     super.key,
     required this.controller,
     required this.config,
     this.onLongPressPrimary,
+    this.onCategoryTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final categories = controller.filteredPrimaryCategories;
+    final selectedPrimary = controller.selectedPrimary;
     final theme = Theme.of(context);
+    final deviceType = ResponsiveHelper.getDeviceType(context);
+    final padding = ResponsiveHelper.getPadding(context, isSmall: true);
+    final isDarkMode = theme.brightness == Brightness.dark;
+
+    // 在大屏幕上添加横向padding以增加美观度
+    final horizontalPadding = deviceType == DeviceType.desktop ? 12.0 : 4.0;
 
     if (categories.isEmpty) {
       return Center(
         child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.category_outlined,
-                size: 40,
-                color: theme.colorScheme.outline.withOpacity(0.5),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                '没有找到相关类别',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.outline,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
+          padding: EdgeInsets.all(ResponsiveHelper.getPadding(context)),
+          child: Text(
+            config.emptyText,
+            style: TextStyle(
+              fontSize: 14 * ResponsiveHelper.getTextScaleFactor(context),
+              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+              fontStyle: FontStyle.italic,
+            ),
+            textAlign: TextAlign.center,
           ),
         ),
       );
     }
+    final itemHeight = ResponsiveHelper.getPrimaryItemHeight(context);
 
-    return Column(
-      children: [
-        // 搜索结果指示器
-        if (controller.searchQuery.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-            child: Row(
-              children: [
-                Text(
-                  '搜索结果',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    '"${controller.searchQuery}"',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.primary,
-                      fontStyle: FontStyle.italic,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.primary.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    '${categories.length}',
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: theme.colorScheme.primary,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ],
+    // 使用ListView.builder提高性能
+    final listViewWidget = ListView.builder(
+      // 添加关键缓存属性，优化滚动性能
+      key: PageStorageKey<String>('primary_panel_${selectedPrimary?.id}'),
+      physics: const BouncingScrollPhysics(),
+      padding: EdgeInsets.symmetric(
+        vertical: padding / 2,
+        horizontal: horizontalPadding, // 水平内边距
+      ),
+      itemExtent: itemHeight,
+      // 固定每项高度以提高性能
+      itemCount: categories.length,
+      itemBuilder: (context, index) {
+        final category = categories[index];
+        final isSelected = selectedPrimary?.id == category.id;
+
+        // 使用唯一key帮助Flutter识别和优化重建
+        return KeyedSubtree(
+          key: ValueKey('primary_${category.id}'),
+          child: CategoryItem(
+            category: category,
+            isSelected: isSelected,
+            isPrimary: true,
+            config: config.copyWith(
+              primaryItemHeight: itemHeight,
             ),
-          ),
-
-        // 主类别列表
-        Expanded(
-          child: AnimatedBuilder(
-            animation: controller,
-            builder: (context, _) {
-              // 使用Key确保在选择改变时重建
-              final listKey = ValueKey(
-                  'primary_list_${controller.selectedPrimary?.id}_${controller.searchQuery}');
-
-              return ListView.builder(
-                key: listKey,
-                padding: EdgeInsets.zero,
-                itemCount: categories.length,
-                physics: const BouncingScrollPhysics(),
-                itemBuilder: (context, index) {
-                  final category = categories[index];
-                  final isSelected = controller.selectedPrimary == category;
-
-                  // 自定义主类别项目
-                  return _buildPrimaryCategoryItem(context, category,
-                      isSelected, index == categories.length - 1);
-                },
-              );
+            onTap: () {
+              if (onCategoryTap != null) {
+                // 使用Future.microtask确保在下一个微任务循环中执行回调
+                // 这可以帮助解决状态更新和UI渲染的同步问题
+                Future.microtask(() => onCategoryTap!(category));
+              }
             },
+            onLongPress: onLongPressPrimary,
           ),
-        ),
-      ],
+        );
+      },
+      // 添加缓存范围，优化内存使用
+      cacheExtent: itemHeight * 10, // 预缓存10个项目的高度
     );
-  }
 
-  /// 构建主类别项目
-  Widget _buildPrimaryCategoryItem(
-      BuildContext context, Category category, bool isSelected, bool isLast) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    final categoryColor = category.color ?? config.defaultSelectedColor;
-
-    // 背景颜色和样式
-    final backgroundColor =
-        isSelected ? categoryColor.withOpacity(0.15) : Colors.transparent;
-
-    final borderWidth = isSelected ? 2.0 : 0.0;
-    final borderColor = isSelected ? categoryColor : Colors.transparent;
-    final borderRadius = BorderRadius.circular(isSelected ? 8 : 0);
-
-    // 文本样式
-    final textColor = isSelected ? categoryColor : colorScheme.onSurface;
-    final iconColor =
-        isSelected ? categoryColor : categoryColor.withOpacity(0.7);
-
-    return Container(
-      margin: EdgeInsets.only(
-        left: 8,
-        right: 8,
-        top: 4,
-        bottom: isLast ? 4 : 2,
-      ),
-      decoration: BoxDecoration(
-        color: backgroundColor,
-        borderRadius: borderRadius,
-        border: Border.all(
-          color: borderColor,
-          width: borderWidth,
-        ),
-        boxShadow: isSelected
-            ? [
-                BoxShadow(
-                  color: categoryColor.withOpacity(0.1),
-                  blurRadius: 4,
-                  offset: const Offset(0, 2),
-                ),
-              ]
-            : null,
-      ),
-      child: ClipRRect(
-        borderRadius: borderRadius,
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: () => controller.selectPrimaryCategory(category),
-            onLongPress: onLongPressPrimary != null
-                ? () => onLongPressPrimary!(category)
-                : null,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  // 图标和名称的上下结构
-                  Expanded(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        // 图标
-                        if (config.showIcons &&
-                            (category.icon != null ||
-                                config.defaultIcon != null))
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: categoryColor
-                                  .withOpacity(isSelected ? 0.15 : 0.08),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Icon(
-                              category.icon ?? config.defaultIcon,
-                              color: iconColor,
-                              size: 20,
-                            ),
-                          ),
-                        const SizedBox(height: 8),
-                        // 文本
-                        Text(
-                          category.name,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: textColor,
-                            fontWeight: isSelected
-                                ? FontWeight.bold
-                                : FontWeight.normal,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  if (isSelected)
-                    Icon(
-                      Icons.arrow_forward_ios,
-                      color: categoryColor,
-                      size: 14,
-                    ),
-                ],
-              ),
+    // 针对大屏幕添加装饰容器
+    if (deviceType == DeviceType.desktop) {
+      return Container(
+        decoration: BoxDecoration(
+          color: isDarkMode
+              ? theme.colorScheme.surface.withValues(alpha: 0.95)
+              : theme.colorScheme.surface,
+          boxShadow: [
+            BoxShadow(
+              color: theme.colorScheme.shadow.withValues(alpha: 0.08),
+              blurRadius: 4,
+              offset: const Offset(0, 1),
+            ),
+          ],
+          border: Border(
+            right: BorderSide(
+              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.15),
+              width: 1,
             ),
           ),
         ),
-      ),
-    );
+        child: listViewWidget,
+      );
+    }
+
+    // 其他设备直接返回列表
+    return listViewWidget;
   }
 }

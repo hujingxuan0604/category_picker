@@ -2,6 +2,7 @@ import 'package:category_picker/src/controllers/picker_controller.dart';
 import 'package:category_picker/src/models/category.dart';
 import 'package:category_picker/src/models/picker_config.dart';
 import 'package:category_picker/src/widgets/picker_widget.dart';
+import 'package:category_picker/src/widgets/color_picker.dart';
 import 'package:flutter/material.dart';
 
 void main() {
@@ -16,9 +17,9 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
-  ThemeMode _themeMode = ThemeMode.dark; // 默认黑暗模式
+  ThemeMode _themeMode = ThemeMode.dark;
 
-  void toggleTheme() {
+  void _toggleTheme() {
     setState(() {
       _themeMode =
           _themeMode == ThemeMode.light ? ThemeMode.dark : ThemeMode.light;
@@ -28,7 +29,7 @@ class _MyAppState extends State<MyApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Category Picker Demo',
+      title: '分类选择器示例',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
           seedColor: Colors.deepPurple,
@@ -44,11 +45,13 @@ class _MyAppState extends State<MyApp> {
         useMaterial3: true,
       ),
       themeMode: _themeMode,
-      home: CategoryPickerDemo(toggleTheme: toggleTheme),
+      home: CategoryPickerDemo(toggleTheme: _toggleTheme),
+      debugShowCheckedModeBanner: false,
     );
   }
 }
 
+/// 分类示例的主页
 class CategoryPickerDemo extends StatefulWidget {
   final VoidCallback toggleTheme;
 
@@ -64,19 +67,34 @@ class CategoryPickerDemo extends StatefulWidget {
 class _CategoryPickerDemoState extends State<CategoryPickerDemo>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  final List<Category> _productCategories = [];
-  final List<Category> _serviceCategories = [];
-  List<Category> _selectedProductCategories = [];
-  List<Category> _selectedServiceCategories = [];
-  String? _currentPrimaryId; // 当前选中的主类别ID
   late CategoryPickerController _productPickerController;
   late CategoryPickerController _servicePickerController;
+
+  // 分类数据
+  final List<Category> _productCategories = [];
+  final List<Category> _serviceCategories = [];
+
+  // 选中的分类
+  List<Category> _selectedProductCategories = [];
+  List<Category> _selectedServiceCategories = [];
+
+  // 颜色选择器示例数据
+  Color _selectedColor = Colors.blue;
+  final List<Color> _recentColors = [
+    Colors.blue,
+    Colors.red,
+    Colors.green,
+    Colors.orange,
+    Colors.purple,
+  ];
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     _initializeCategories();
+
+    // 初始化控制器
     _productPickerController =
         CategoryPickerController(categories: _productCategories);
     _servicePickerController =
@@ -86,8 +104,6 @@ class _CategoryPickerDemoState extends State<CategoryPickerDemo>
     _productPickerController.addListener(() {
       if (_tabController.index == 0) {
         setState(() {
-          // 我们不再需要专门更新_currentPrimaryId
-          // 只需要更新选中的类别列表即可
           _selectedProductCategories =
               _productPickerController.selectedCategories;
         });
@@ -98,12 +114,15 @@ class _CategoryPickerDemoState extends State<CategoryPickerDemo>
     _servicePickerController.addListener(() {
       if (_tabController.index == 1) {
         setState(() {
-          // 我们不再需要专门更新_currentPrimaryId
-          // 只需要更新选中的类别列表即可
           _selectedServiceCategories =
               _servicePickerController.selectedCategories;
         });
       }
+    });
+
+    // 添加Tab控制器监听
+    _tabController.addListener(() {
+      setState(() {}); // 刷新界面以更新显示
     });
   }
 
@@ -115,12 +134,13 @@ class _CategoryPickerDemoState extends State<CategoryPickerDemo>
     super.dispose();
   }
 
+  /// 初始化分类数据
   void _initializeCategories() {
     // 初始化产品分类
     _productCategories.addAll([
       Category(
         id: 'electronics',
-        name: '产品',
+        name: '电子产品',
         icon: Icons.electrical_services,
         color: Colors.blue,
         children: [
@@ -222,63 +242,85 @@ class _CategoryPickerDemoState extends State<CategoryPickerDemo>
     final isDarkMode = theme.brightness == Brightness.dark;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('分类选择器'),
-        centerTitle: true,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        actions: [
-          IconButton(
-            icon: Icon(isDarkMode ? Icons.light_mode : Icons.dark_mode),
-            tooltip: isDarkMode ? '切换到亮色模式' : '切换到深色模式',
-            onPressed: widget.toggleTheme,
-          ),
-        ],
-        bottom: TabBar(
-          controller: _tabController,
-          onTap: (index) {
-            // 切换Tab时更新当前主类别信息
-            setState(() {
-              // 无需再更新_currentPrimaryId，因为我们现在直接从controller获取主类别名称
-
-              // 主要目的是触发界面刷新，显示正确的已选分类信息
-            });
-          },
-          indicatorSize: TabBarIndicatorSize.label,
-          tabs: const [
-            Tab(text: '产品分类', icon: Icon(Icons.shopping_cart)),
-            Tab(text: '服务分类', icon: Icon(Icons.medical_services)),
-          ],
-        ),
-      ),
+      appBar: _buildAppBar(isDarkMode, theme),
       body: SafeArea(
         child: TabBarView(
           controller: _tabController,
           children: [
             // 产品分类Tab
-            _buildCategoryTab(),
+            _buildCategoryTab(_productPickerController),
             // 服务分类Tab
-            _buildCategoryTab(),
+            _buildCategoryTab(_servicePickerController),
+            // 颜色选择器Tab
+            _buildColorPickerTab(),
           ],
         ),
       ),
-      bottomNavigationBar: _buildBottomInfoBar(),
+      bottomNavigationBar:
+          _tabController.index == 2 ? null : _buildBottomInfoBar(theme),
     );
   }
 
-  Widget _buildBottomInfoBar() {
-    final theme = Theme.of(context);
+  /// 构建应用栏
+  PreferredSizeWidget _buildAppBar(bool isDarkMode, ThemeData theme) {
+    return AppBar(
+      title: const Text('分类选择器'),
+      centerTitle: true,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      actions: [
+        IconButton(
+          icon: Icon(isDarkMode ? Icons.light_mode : Icons.dark_mode),
+          tooltip: isDarkMode ? '切换到亮色模式' : '切换到深色模式',
+          onPressed: widget.toggleTheme,
+        ),
+      ],
+      bottom: TabBar(
+        controller: _tabController,
+        indicatorSize: TabBarIndicatorSize.label,
+        tabs: const [
+          Tab(text: '产品分类', icon: Icon(Icons.shopping_cart)),
+          Tab(text: '服务分类', icon: Icon(Icons.medical_services)),
+          Tab(text: '颜色选择器', icon: Icon(Icons.color_lens)),
+        ],
+      ),
+    );
+  }
+
+  /// 构建分类选项卡内容
+  Widget _buildCategoryTab(CategoryPickerController controller) {
+    return Column(
+      children: [
+        Expanded(
+          child: CategoryPickerWidget(
+            controller: controller,
+            config: const CategoryPickerConfig(
+              showSearch: true,
+              defaultIcon: Icons.category,
+              showAddButtonInSecondary: true,
+              addCategoryText: '添加子类别',
+            ),
+            onLongPressPrimary: _handleLongPressPrimary,
+            onLongPressSecondary: _handleLongPressSecondary,
+            onAddCategory: _handleAddCategory,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 构建底部信息栏
+  Widget _buildBottomInfoBar(ThemeData theme) {
     final currentTabIndex = _tabController.index;
     final selectedCategories = currentTabIndex == 0
         ? _selectedProductCategories
         : _selectedServiceCategories;
-
-    // 获取当前选中的主类别名称
-    String currentPrimaryName = '未选择';
     final controller = currentTabIndex == 0
         ? _productPickerController
         : _servicePickerController;
 
+    // 获取当前选中的主类别名称
+    String currentPrimaryName = '未选择';
     if (controller.selectedPrimary != null) {
       currentPrimaryName = controller.selectedPrimary!.name;
     }
@@ -288,11 +330,9 @@ class _CategoryPickerDemoState extends State<CategoryPickerDemo>
     final secondaryIds = <String>{};
 
     for (final category in selectedCategories) {
-      // 使用isMainCategory判断是否是主类别
       if (category.isMainCategory) {
         primaryIds.add(category.id);
       } else {
-        // 如果是子类别，使用parentId找到对应的主类别
         secondaryIds.add(category.id);
         if (category.parentId != null) {
           primaryIds.add(category.parentId!);
@@ -307,7 +347,7 @@ class _CategoryPickerDemoState extends State<CategoryPickerDemo>
         borderRadius: BorderRadius.circular(16),
       ),
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
           gradient: LinearGradient(
@@ -358,6 +398,7 @@ class _CategoryPickerDemoState extends State<CategoryPickerDemo>
               label: '子类别ID',
               value: secondaryIds.isEmpty ? '未选择' : secondaryIds.join(', '),
               context: context,
+              showDivider: false,
             ),
           ],
         ),
@@ -365,71 +406,51 @@ class _CategoryPickerDemoState extends State<CategoryPickerDemo>
     );
   }
 
+  /// 构建信息项
   Widget _buildInfoItem({
     required IconData icon,
     required String label,
     required String value,
     required BuildContext context,
+    bool showDivider = true,
   }) {
     final theme = Theme.of(context);
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            icon,
-            size: 16,
-            color: theme.colorScheme.primary.withOpacity(0.8),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurface.withOpacity(0.7),
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  value,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCategoryTab() {
-    final controller = _tabController.index == 0
-        ? _productPickerController
-        : _servicePickerController;
-
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          child: HierarchicalCategoryPicker(
-            controller: controller,
-            config: const CategoryPickerConfig(
-              showSearch: true,
-              defaultIcon: Icons.category,
-              showAddButtonInSecondary: true,
-              addCategoryText: '添加子类别',
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              icon,
+              size: 16,
+              color: theme.colorScheme.primary.withOpacity(0.8),
             ),
-            onLongPressPrimary: _handleLongPressPrimary,
-            onLongPressSecondary: _handleLongPressSecondary,
-            onAddCategory: _handleAddCategory,
-          ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurface.withOpacity(0.7),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    value,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
+        if (showDivider) const SizedBox(height: 12),
       ],
     );
   }
@@ -464,14 +485,25 @@ class _CategoryPickerDemoState extends State<CategoryPickerDemo>
     String tabName = currentTabIndex == 0 ? "产品" : "服务";
 
     if (parentCategory == null) {
-      // 添加主类别
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('添加${tabName}主类别')),
-      );
+      _showAddMainCategoryDialog(tabName);
     } else {
-      // 添加子类别
       _showAddSubcategoryDialog(parentCategory);
     }
+  }
+
+  /// 显示添加主类别对话框
+  void _showAddMainCategoryDialog(String tabName) {
+    final controller = _tabController.index == 0
+        ? _productPickerController
+        : _servicePickerController;
+
+    // 实际项目中应实现添加主类别的对话框
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('添加${tabName}主类别'),
+        duration: const Duration(seconds: 1),
+      ),
+    );
   }
 
   /// 显示类别操作底部菜单
@@ -495,6 +527,7 @@ class _CategoryPickerDemoState extends State<CategoryPickerDemo>
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                // 底部菜单拖拽条
                 Container(
                   margin: const EdgeInsets.only(bottom: 8),
                   width: 40,
@@ -504,79 +537,40 @@ class _CategoryPickerDemoState extends State<CategoryPickerDemo>
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16.0, vertical: 8.0),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: category.color?.withOpacity(0.2) ??
-                              theme.colorScheme.primaryContainer
-                                  .withOpacity(0.3),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Icon(
-                          category.icon ?? Icons.category,
-                          color: category.color ?? theme.colorScheme.primary,
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              category.name,
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            Text(
-                              '${isPrimary ? "$tabName主类别" : "$tabName子类别"} · ID: ${category.id}',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                // 类别信息栏
+                _buildCategoryInfoHeader(category, isPrimary, tabName, theme),
                 const Divider(),
-                ListTile(
-                  leading: Icon(Icons.edit_outlined,
-                      color: theme.colorScheme.primary),
-                  title: Text('编辑${isPrimary ? "主" : "子"}类别'),
-                  subtitle: const Text('修改名称、图标和颜色'),
+                // 操作列表
+                _buildActionTile(
+                  icon: Icons.edit_outlined,
+                  iconColor: theme.colorScheme.primary,
+                  title: '编辑${isPrimary ? "主" : "子"}类别',
+                  subtitle: '修改名称、图标和颜色',
                   onTap: () {
                     Navigator.pop(context);
                     _showEditCategoryDialog(category, isPrimary);
                   },
                 ),
                 if (isPrimary && category.hasChildren)
-                  ListTile(
-                    leading: Icon(Icons.add_circle_outline,
-                        color: theme.colorScheme.primary),
-                    title: const Text('添加子类别'),
-                    subtitle: Text('向 ${category.name} 添加新的子类别'),
+                  _buildActionTile(
+                    icon: Icons.add_circle_outline,
+                    iconColor: theme.colorScheme.primary,
+                    title: '添加子类别',
+                    subtitle: '向 ${category.name} 添加新的子类别',
                     onTap: () {
                       Navigator.pop(context);
                       _showAddSubcategoryDialog(category);
                     },
                   ),
-                ListTile(
-                  leading: const Icon(Icons.delete_outline, color: Colors.red),
-                  title: Text('删除${isPrimary ? "主" : "子"}类别',
-                      style: const TextStyle(color: Colors.red)),
-                  subtitle: Text(
-                    isPrimary && category.hasChildren
-                        ? '警告：将同时删除所有子类别'
-                        : '从列表中移除此类别',
-                    style: const TextStyle(color: Colors.red),
-                  ),
+                _buildActionTile(
+                  icon: Icons.delete_outline,
+                  iconColor: Colors.red,
+                  title: '删除${isPrimary ? "主" : "子"}类别',
+                  titleColor: Colors.red,
+                  subtitle: isPrimary && category.hasChildren
+                      ? '警告：将同时删除所有子类别'
+                      : '从列表中移除此类别',
+                  subtitleColor: Colors.red,
                   onTap: () {
                     Navigator.pop(context);
                     _showDeleteConfirmDialog(category, isPrimary);
@@ -590,25 +584,94 @@ class _CategoryPickerDemoState extends State<CategoryPickerDemo>
     );
   }
 
+  /// 构建类别信息头部
+  Widget _buildCategoryInfoHeader(
+      Category category, bool isPrimary, String tabName, ThemeData theme) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: category.color?.withOpacity(0.2) ??
+                  theme.colorScheme.primaryContainer.withOpacity(0.3),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              category.icon ?? Icons.category,
+              color: category.color ?? theme.colorScheme.primary,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  category.name,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  '${isPrimary ? "$tabName主类别" : "$tabName子类别"} · ID: ${category.id}',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 构建操作列表项
+  Widget _buildActionTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+    Color? iconColor,
+    Color? titleColor,
+    Color? subtitleColor,
+  }) {
+    return ListTile(
+      leading: Icon(icon, color: iconColor),
+      title: Text(title, style: TextStyle(color: titleColor)),
+      subtitle: Text(subtitle, style: TextStyle(color: subtitleColor)),
+      onTap: onTap,
+    );
+  }
+
   /// 显示编辑类别对话框
   void _showEditCategoryDialog(Category category, bool isPrimary) {
-    // 此处添加编辑类别的对话框实现
-    // 可以使用showDialog显示一个编辑表单
+    // 实际项目中应实现编辑类别的对话框
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('编辑${isPrimary ? "主" : "子"}类别: ${category.name}')),
+      SnackBar(
+        content: Text('编辑${isPrimary ? "主" : "子"}类别: ${category.name}'),
+        duration: const Duration(seconds: 1),
+      ),
     );
   }
 
   /// 显示添加子类别对话框
   void _showAddSubcategoryDialog(Category parentCategory) {
-    // 此处添加新增子类别的对话框实现
+    // 实际项目中应实现添加子类别的对话框
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('向 ${parentCategory.name} 添加子类别')),
+      SnackBar(
+        content: Text('向 ${parentCategory.name} 添加子类别'),
+        duration: const Duration(seconds: 1),
+      ),
     );
   }
 
   /// 显示删除确认对话框
   void _showDeleteConfirmDialog(Category category, bool isPrimary) {
+    final theme = Theme.of(context);
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -619,20 +682,222 @@ class _CategoryPickerDemoState extends State<CategoryPickerDemo>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
+            child:
+                Text('取消', style: TextStyle(color: theme.colorScheme.primary)),
           ),
           TextButton(
             onPressed: () {
               Navigator.pop(context);
-              // 这里添加实际的删除逻辑
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('已删除: ${category.name}')),
-              );
+              _deleteCategory(category, isPrimary);
             },
             child: const Text('删除', style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
     );
+  }
+
+  /// 删除类别
+  void _deleteCategory(Category category, bool isPrimary) {
+    // 实际项目中应实现删除类别的逻辑
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('已删除: ${category.name}'),
+        duration: const Duration(seconds: 1),
+      ),
+    );
+  }
+
+  /// 构建颜色选择器标签页
+  Widget _buildColorPickerTab() {
+    final theme = Theme.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 标题
+            Text(
+              '颜色选择器示例',
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // 当前选中的颜色展示
+            Center(
+              child: Container(
+                width: 100,
+                height: 100,
+                decoration: BoxDecoration(
+                  color: _selectedColor,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: _selectedColor.withOpacity(0.4),
+                      blurRadius: 12,
+                      spreadRadius: 4,
+                    ),
+                  ],
+                ),
+                child: Center(
+                  child: Text(
+                    '已选颜色',
+                    style: TextStyle(
+                      color: _isColorBright(_selectedColor)
+                          ? Colors.black
+                          : Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 24),
+
+            // 颜色值信息
+            Card(
+              elevation: 2,
+              margin: EdgeInsets.zero,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('HEX', style: theme.textTheme.titleSmall),
+                          Text(
+                            '#${_selectedColor.value.toRadixString(16).substring(2).toUpperCase()}',
+                            style: const TextStyle(
+                              fontFamily: 'monospace',
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('RGB', style: theme.textTheme.titleSmall),
+                          Text(
+                            'R: ${_selectedColor.red}, G: ${_selectedColor.green}, B: ${_selectedColor.blue}',
+                            style: const TextStyle(
+                              fontFamily: 'monospace',
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 24),
+
+            // 基本颜色选择器
+            Text(
+              '基本颜色选择器',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            ColorPickerTile(
+              selectedColor: _selectedColor,
+              onColorSelected: (color) {
+                setState(() {
+                  _selectedColor = color;
+                  if (!_recentColors.contains(color)) {
+                    _recentColors.insert(0, color);
+                    if (_recentColors.length > 5) {
+                      _recentColors.removeLast();
+                    }
+                  }
+                });
+              },
+            ),
+
+            const SizedBox(height: 24),
+
+            // 自定义颜色选项
+            Text(
+              '自定义颜色集',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            ColorPickerTile(
+              selectedColor: _selectedColor,
+              onColorSelected: (color) {
+                setState(() {
+                  _selectedColor = color;
+                });
+              },
+              colors: const [
+                Colors.redAccent,
+                Colors.pinkAccent,
+                Colors.purpleAccent,
+                Colors.deepPurpleAccent,
+                Colors.indigoAccent,
+                Colors.blueAccent,
+                Colors.lightBlueAccent,
+                Colors.cyanAccent,
+                Colors.tealAccent,
+                Colors.greenAccent,
+                Colors.lightGreenAccent,
+                Colors.limeAccent,
+                Colors.yellowAccent,
+                Colors.amberAccent,
+                Colors.orangeAccent,
+                Colors.deepOrangeAccent,
+              ],
+            ),
+
+            const SizedBox(height: 24),
+
+            // 最近使用的颜色
+            Text(
+              '最近使用的颜色',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            ColorPickerTile(
+              selectedColor: _selectedColor,
+              onColorSelected: (color) {
+                setState(() {
+                  _selectedColor = color;
+                });
+              },
+              colors: _recentColors,
+              showCustomColorOption: false,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // 判断颜色是否明亮
+  bool _isColorBright(Color color) {
+    return (0.299 * color.red + 0.587 * color.green + 0.114 * color.blue) /
+            255 >
+        0.5;
   }
 }

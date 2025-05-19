@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:category_picker/src/controllers/picker_controller.dart';
-import 'package:category_picker/src/models/picker_config.dart';
-import 'package:category_picker/src/models/category.dart';
 
+import '../controllers/picker_controller.dart';
+import '../models/picker_config.dart';
+import '../models/category.dart';
+import '../utils/responsive_helper.dart';
 import 'category_item.dart';
 
 class SecondaryCategoryPanel extends StatelessWidget {
@@ -15,329 +16,310 @@ class SecondaryCategoryPanel extends StatelessWidget {
   /// 添加子类别的回调函数
   final Function(Category? parentCategory)? onAddCategory;
 
+  /// 点击类别的回调函数
+  final Function(Category category)? onCategoryTap;
+
   const SecondaryCategoryPanel({
     super.key,
     required this.controller,
     required this.config,
     this.onLongPressSecondary,
     this.onAddCategory,
+    this.onCategoryTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final categories = controller.filteredSecondaryCategories;
+    final selectedPrimary = controller.selectedPrimary;
     final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
 
-    if (categories == null || categories.isEmpty) {
-      if (controller.selectedPrimary != null &&
-          config.showAddButtonInSecondary) {
-        // 如果有选中的主类别且配置显示添加按钮，即使没有子类别也显示添加按钮
-        return _buildEmptyWithAddButton(context, controller.selectedPrimary!);
-      }
-
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.category_outlined,
-              size: 56,
-              color: theme.colorScheme.outline.withOpacity(0.5),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              categories == null ? '请选择一个分类' : config.emptyText,
-              style: theme.textTheme.titleMedium?.copyWith(
-                color: theme.colorScheme.outline,
-              ),
-            ),
-            if (controller.searchQuery.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(
-                  '没有符合"${controller.searchQuery}"的子类别',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.outline.withOpacity(0.7),
-                  ),
-                ),
-              ),
-          ],
-        ),
+    if (selectedPrimary == null) {
+      return _buildEmptyState(
+        context,
+        '请先选择一个主类别',
+        Icons.arrow_back,
       );
     }
 
-    // 计算合适的列数，根据屏幕宽度动态调整
-    final screenWidth = MediaQuery.of(context).size.width;
-    final primaryPanelWidth = screenWidth * config.primaryPanelWidthRatio;
-    final remainingWidth = screenWidth - primaryPanelWidth;
-    // 固定显示4列
-    final crossAxisCount = 4;
+    final secondaryCategories = controller.filteredSecondaryCategories;
 
-    return AnimatedBuilder(
-        animation: controller,
-        builder: (context, _) {
-          // 在列表中添加"添加子类别"按钮
-          final displayCategories = controller.searchQuery.isEmpty &&
-                  config.showAddButtonInSecondary &&
-                  controller.selectedPrimary != null
-              ? [null, ...categories] // null 作为添加按钮的占位符
-              : categories;
+    if (secondaryCategories == null || secondaryCategories.isEmpty) {
+      // 检查是否由于搜索导致的空结果
+      if (controller.searchQuery.isNotEmpty) {
+        return _buildEmptyState(
+          context,
+          '没有找到匹配的子类别',
+          Icons.search_off,
+        );
+      }
 
-          // 当前选中主类别
-          final selectedPrimary = controller.selectedPrimary;
-          final categoryColor =
-              selectedPrimary?.color ?? config.defaultSelectedColor;
+      // 真正的空子类别
+      return _buildEmptyStateWithAction(
+        context,
+        selectedPrimary,
+        '该类别下暂无子类别',
+        Icons.category_outlined,
+      );
+    }
 
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // 子类别数量指示器
-              if (selectedPrimary != null)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 6, 12, 2),
-                  child: Row(
-                    children: [
-                      Text(
-                        '子类别',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                          fontSize: 11,
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 4, vertical: 1),
-                        decoration: BoxDecoration(
-                          color: categoryColor.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          '${categories.length}',
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: categoryColor,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 10,
-                          ),
-                        ),
-                      ),
-                      if (controller.searchQuery.isNotEmpty)
-                        Text(
-                          '搜索结果: ${controller.searchQuery}',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.primary,
-                            fontStyle: FontStyle.italic,
-                            fontSize: 10,
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
+    // 获取响应式布局参数
+    final padding = ResponsiveHelper.getPadding(context, isSmall: true);
+    final isCompact = ResponsiveHelper.shouldUseCompactLayout(context);
 
-              // 子类别网格
-              Expanded(
-                child: GridView.builder(
-                  key: ValueKey(
-                      'grid_${controller.selectedPrimary?.id}_${controller.searchQuery}'),
-                  physics: const BouncingScrollPhysics(),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: crossAxisCount,
-                    childAspectRatio: 0.85,
-                    crossAxisSpacing: 8,
-                    mainAxisSpacing: 10,
-                  ),
-                  itemCount: displayCategories.length,
-                  itemBuilder: (context, index) {
-                    // 如果是添加按钮位置，需要调整索引获取实际的类别
-                    if (config.showAddButtonInSecondary &&
-                        index == 0 &&
-                        controller.searchQuery.isEmpty) {
-                      return _buildAddCategoryButton(
-                          context, controller.selectedPrimary);
-                    }
-
-                    final actualIndex = config.showAddButtonInSecondary &&
-                            controller.searchQuery.isEmpty
-                        ? index - 1
-                        : index;
-                    final category = categories[actualIndex];
-                    final isSelected =
-                        controller.selectedCategories.contains(category);
-
-                    return CategoryItem(
-                      category: category,
-                      isSelected: isSelected,
-                      isPrimary: false,
-                      config: config,
-                      onTap: () => controller.toggleCategorySelection(category),
-                      onLongPress: onLongPressSecondary,
-                    );
-                  },
-                ),
-              ),
-            ],
-          );
-        });
-  }
-
-  /// 构建添加子类别按钮
-  Widget _buildAddCategoryButton(
-      BuildContext context, Category? parentCategory) {
-    final theme = Theme.of(context);
-    final categoryColor = parentCategory?.color ?? theme.colorScheme.primary;
-
-    return GestureDetector(
-      onTap: () {
-        if (onAddCategory != null) {
-          onAddCategory!(parentCategory);
-        }
-      },
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: padding, horizontal: padding / 2),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 图标带圆形背景
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: categoryColor.withOpacity(0.1),
-              shape: BoxShape.rectangle,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Center(
-              child: Icon(
-                Icons.add,
-                size: 18,
-                color: categoryColor,
-              ),
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            config.addCategoryText,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w500,
-              color: categoryColor,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+          // 类别标题
+          _buildHeader(context, selectedPrimary, isDarkMode, theme, isCompact),
+
+          // 子类别网格
+          Expanded(
+            child: _buildSecondaryGrid(context, secondaryCategories),
           ),
         ],
       ),
     );
   }
 
-  /// 构建空视图但带有添加按钮
-  Widget _buildEmptyWithAddButton(
-      BuildContext context, Category parentCategory) {
+  /// 构建标题
+  Widget _buildHeader(BuildContext context, Category selectedPrimary,
+      bool isDarkMode, ThemeData theme, bool isCompact) {
+    final headerPadding = EdgeInsets.fromLTRB(
+        ResponsiveHelper.getPadding(context, isSmall: true),
+        ResponsiveHelper.getPadding(context, isSmall: true) / 2,
+        ResponsiveHelper.getPadding(context, isSmall: true),
+        ResponsiveHelper.getPadding(context, isSmall: false) / 2);
+
+    // 根据屏幕大小和方向调整布局
+    return Padding(
+      padding: headerPadding,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Expanded(
+            child: Text(
+              '${selectedPrimary.name}下的子类别',
+              style: TextStyle(
+                fontSize: 14 * ResponsiveHelper.getTextScaleFactor(context),
+                fontWeight: FontWeight.w600,
+                color: isDarkMode
+                    ? theme.colorScheme.onSurface.withValues(alpha: 0.9)
+                    : theme.colorScheme.onSurface.withValues(alpha: 0.8),
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (config.showAddButtonInSecondary && onAddCategory != null)
+            TextButton.icon(
+              onPressed: () => onAddCategory?.call(selectedPrimary),
+              icon: Icon(
+                Icons.add,
+                size: ResponsiveHelper.getIconSize(context, isSmall: true),
+              ),
+              label: Text(
+                isCompact ? '添加' : config.addCategoryText,
+                style: TextStyle(
+                  fontSize: isCompact ? 11 : 12,
+                ),
+              ),
+              style: TextButton.styleFrom(
+                padding: EdgeInsets.symmetric(
+                  horizontal:
+                      ResponsiveHelper.getPadding(context, isSmall: true),
+                ),
+                visualDensity: VisualDensity.compact,
+                textStyle: TextStyle(
+                  fontSize: 12 * ResponsiveHelper.getTextScaleFactor(context),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// 构建子类别网格
+  Widget _buildSecondaryGrid(BuildContext context, List<Category> categories) {
+    final selectedPrimaryId = controller.selectedPrimary?.id ?? 'none';
+    final deviceType = ResponsiveHelper.getDeviceType(context);
+    final crossAxisCount =
+        ResponsiveHelper.getSecondaryGridCrossAxisCount(context);
+    final aspectRatio = ResponsiveHelper.getSecondaryItemAspectRatio(context);
+    final padding = ResponsiveHelper.getPadding(context, isSmall: true);
     final theme = Theme.of(context);
-    final categoryColor = parentCategory.color ?? theme.colorScheme.primary;
+    final isDarkMode = theme.brightness == Brightness.dark;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // 主类别标题栏
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-          decoration: BoxDecoration(
-            color: categoryColor.withOpacity(0.1),
-            border: Border(
-              bottom: BorderSide(
-                color: theme.colorScheme.outline.withOpacity(0.1),
-                width: 1,
+    // 大屏幕上使用更大的间距
+    double width = MediaQuery.of(context).size.width;
+    final isExtraLargeScreen = width > 1600;
+
+    final gridPadding = deviceType == DeviceType.desktop
+        ? EdgeInsets.symmetric(
+            horizontal: isExtraLargeScreen ? padding * 2.0 : padding * 1.6,
+            vertical: isExtraLargeScreen ? padding * 1.6 : padding * 1.2)
+        : EdgeInsets.symmetric(horizontal: padding, vertical: padding);
+
+    // 大屏幕上改进间距，使布局更加宽松舒适
+    final crossAxisSpacing = deviceType == DeviceType.desktop
+        ? isExtraLargeScreen
+            ? padding * 2.0
+            : padding * 1.6 // 大屏幕上的列间距
+        : padding;
+
+    final mainAxisSpacing = deviceType == DeviceType.desktop
+        ? isExtraLargeScreen
+            ? padding * 1.5
+            : padding * 1.2 // 大屏幕上的行间距
+        : padding / 2;
+
+    // 创建美观的网格视图
+    final gridView = GridView.builder(
+      // 使用包含主类别ID的key，确保在主类别变化时完全重建
+      key: PageStorageKey<String>('secondary_grid_$selectedPrimaryId'),
+      padding: gridPadding,
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: crossAxisCount,
+        childAspectRatio: aspectRatio,
+        crossAxisSpacing: crossAxisSpacing,
+        mainAxisSpacing: mainAxisSpacing,
+      ),
+      itemCount: categories.length,
+      itemBuilder: (context, index) {
+        final category = categories[index];
+        final isSelected = controller.selectedCategories.contains(category);
+
+        // 使用唯一key帮助Flutter优化重建
+        return KeyedSubtree(
+          key: ValueKey('secondary_${selectedPrimaryId}_${category.id}'),
+          child: CategoryItem(
+            category: category,
+            isSelected: isSelected,
+            isPrimary: false,
+            config: config,
+            onTap: () {
+              if (onCategoryTap != null) {
+                // 使用microtask确保在下一个UI渲染周期执行
+                Future.microtask(() => onCategoryTap!(category));
+              }
+            },
+            onLongPress: onLongPressSecondary,
+          ),
+        );
+      },
+    );
+
+    // 在大屏幕上使用装饰容器增强视觉效果
+    if (deviceType == DeviceType.desktop) {
+      return Container(
+        decoration: BoxDecoration(
+          color: isDarkMode
+              ? theme.colorScheme.surface.withValues(alpha: 0.97)
+              : theme.colorScheme.surface,
+          borderRadius: BorderRadius.circular(isExtraLargeScreen ? 8 : 4),
+          // 添加轻微阴影增强立体感
+          boxShadow: [
+            BoxShadow(
+              color: theme.shadowColor.withValues(alpha: 0.05),
+              blurRadius: 3,
+              offset: const Offset(0, 1),
+            ),
+          ],
+        ),
+        margin: EdgeInsets.symmetric(
+          vertical: isExtraLargeScreen ? padding : padding / 2,
+          horizontal: isExtraLargeScreen ? padding : padding / 2,
+        ),
+        child: gridView,
+      );
+    }
+
+    return gridView;
+  }
+
+  /// 构建空状态
+  Widget _buildEmptyState(BuildContext context, String message, IconData icon) {
+    final theme = Theme.of(context);
+    final textScale = ResponsiveHelper.getTextScaleFactor(context);
+
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            icon,
+            size: 48 * textScale,
+            color: theme.colorScheme.outline.withValues(alpha: 0.5),
+          ),
+          SizedBox(height: ResponsiveHelper.getPadding(context)),
+          Text(
+            message,
+            style: TextStyle(
+              fontSize: 14 * textScale,
+              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 构建带操作的空状态
+  Widget _buildEmptyStateWithAction(
+    BuildContext context,
+    Category parentCategory,
+    String message,
+    IconData icon,
+  ) {
+    final theme = Theme.of(context);
+    final textScale = ResponsiveHelper.getTextScaleFactor(context);
+    final padding = ResponsiveHelper.getPadding(context);
+
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            icon,
+            size: 48 * textScale,
+            color: theme.colorScheme.outline.withValues(alpha: 0.5),
+          ),
+          SizedBox(height: padding),
+          Text(
+            message,
+            style: TextStyle(
+              fontSize: 14 * textScale,
+              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+            ),
+            textAlign: TextAlign.center,
+          ),
+          if (config.showAddButtonInSecondary && onAddCategory != null) ...[
+            SizedBox(height: padding),
+            ElevatedButton.icon(
+              onPressed: () => onAddCategory?.call(parentCategory),
+              icon: Icon(
+                Icons.add,
+                size: ResponsiveHelper.getIconSize(context, isSmall: true),
+              ),
+              label: Text(
+                config.addCategoryText,
+                style: TextStyle(fontSize: 14 * textScale),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: theme.colorScheme.primary,
+                foregroundColor: theme.colorScheme.onPrimary,
+                padding: EdgeInsets.symmetric(
+                  horizontal: padding,
+                  vertical: padding / 2,
+                ),
               ),
             ),
-          ),
-          child: Row(
-            children: [
-              if (parentCategory.icon != null)
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: categoryColor.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(
-                    parentCategory.icon ?? Icons.category,
-                    color: categoryColor,
-                    size: 16,
-                  ),
-                ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  parentCategory.name,
-                  style: theme.textTheme.labelLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: theme.colorScheme.onSurface,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-        ),
-
-        // 空状态
-        Expanded(
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  width: 64,
-                  height: 64,
-                  decoration: BoxDecoration(
-                      color: categoryColor.withOpacity(0.1),
-                      shape: BoxShape.rectangle,
-                      borderRadius: BorderRadius.circular(16)
-                      // border: Border.all(
-                      //   color: categoryColor.withOpacity(0.2),
-                      //   width: 1,
-                      // ),
-                      ),
-                  child: Icon(
-                    Icons.add_circle_outline,
-                    size: 32,
-                    color: categoryColor,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  '${parentCategory.name}还没有子类别',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    color: theme.colorScheme.onBackground.withOpacity(0.7),
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 24),
-                ElevatedButton.icon(
-                  onPressed: () {
-                    if (onAddCategory != null) {
-                      onAddCategory!(parentCategory);
-                    }
-                  },
-                  icon: const Icon(Icons.add),
-                  label: Text(config.addCategoryText),
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 20, vertical: 12),
-                    elevation: 2,
-                    backgroundColor: categoryColor.withOpacity(0.8),
-                    foregroundColor: Colors.white,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
+          ],
+        ],
+      ),
     );
   }
 }
